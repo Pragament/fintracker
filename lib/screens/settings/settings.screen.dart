@@ -31,6 +31,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         body: ListView(
           children: [
             ListTile(
+              key: const Key('settings_name_option'),
               dense: true,
               onTap: (){
                 showDialog(context: context, builder: (context){
@@ -44,6 +45,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         Text("What should we call you?", style: theme.textTheme.bodyLarge!.apply(color: ColorHelper.darken(theme.textTheme.bodyLarge!.color!), fontWeightDelta: 1),),
                         const SizedBox(height: 15,),
                         TextFormField(
+                          key: const Key('name_input'),
                           controller: controller,
                           decoration: InputDecoration(
                               label: const Text("Name"),
@@ -88,6 +90,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               }),
             ),
             ListTile(
+              key: const Key('settings_currency_option'),
               dense: true,
               onTap: (){
                 showCurrencyPicker(context: context, onSelect: (Currency currency){
@@ -107,6 +110,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               }),
             ),
             ListTile(
+              key: const Key('settings_export_option'),
               dense: true,
               onTap:() async {
                 ConfirmModal.showConfirmDialog(
@@ -135,6 +139,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               subtitle:  Text("Export to file",style: Theme.of(context).textTheme.bodySmall?.apply(color: Colors.grey, overflow: TextOverflow.ellipsis)),
              ),
             ListTile(
+              key: const Key('import_confirm_button'),
               dense: true,
               onTap:() async {
                 await FilePicker.platform.pickFiles(
