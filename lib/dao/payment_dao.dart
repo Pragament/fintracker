@@ -10,11 +10,30 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 class PaymentDao {
+
   Future<int> create(Payment payment) async {
     final db = await getDBInstance();
-    var result = db.insert("payments", payment.toJson());
+
+    // Remove the 'tags' from the payment and only insert the necessary fields into the 'payments' table
+    var paymentData = payment.toJson();
+    paymentData.remove('tags');
+
+    // Insert the payment record first (without tags)
+    var result = await db.insert("payments", paymentData);
+
+    // If the payment has tags, insert them into the 'payment_tags' table
+    if (payment.tags.isNotEmpty) {
+      for (var tagId in payment.tags) {
+        await db.insert("payment_tags", {
+          'payment_id': result,
+          'tag_id': tagId,
+        });
+      }
+    }
+
     return result;
   }
+
 
   Future<List<Payment>> find(
       {DateTimeRange? range,
@@ -69,8 +88,26 @@ class PaymentDao {
   Future<int> update(Payment payment) async {
     final db = await getDBInstance();
 
-    var result = await db.update("payments", payment.toJson(),
+    // Remove the 'tags' from the payment data to avoid error
+    var paymentData = payment.toJson();
+    paymentData.remove('tags');  // Remove 'tags' from the update data
+
+    // Update the payment record first (without tags)
+    var result = await db.update("payments", paymentData,
         where: "id = ?", whereArgs: [payment.id]);
+
+    // Remove old tags for the payment (if any)
+    await db.delete("payment_tags", where: "payment_id = ?", whereArgs: [payment.id]);
+
+    // Insert new tags (if any)
+    if (payment.tags.isNotEmpty) {
+      for (var tagId in payment.tags) {
+        await db.insert("payment_tags", {
+          'payment_id': payment.id,
+          'tag_id': tagId,
+        });
+      }
+    }
 
     return result;
   }
@@ -78,11 +115,43 @@ class PaymentDao {
   Future<int> upsert(Payment payment) async {
     final db = await getDBInstance();
     int result;
+
     if (payment.id != null) {
-      result = await db.update("payments", payment.toJson(),
+      // Update the existing payment
+      var paymentData = payment.toJson();
+      paymentData.remove('tags'); // Remove 'tags' from the data to avoid the error
+
+      result = await db.update("payments", paymentData,
           where: "id = ?", whereArgs: [payment.id]);
+
+      // Remove old tags for the payment
+      await db.delete("payment_tags", where: "payment_id = ?", whereArgs: [payment.id]);
+
+      // Insert new tags (if any)
+      if (payment.tags.isNotEmpty) {
+        for (var tagId in payment.tags) {
+          await db.insert("payment_tags", {
+            'payment_id': payment.id,
+            'tag_id': tagId,
+          });
+        }
+      }
     } else {
-      result = await db.insert("payments", payment.toJson());
+      // Insert the new payment
+      var paymentData = payment.toJson();
+      paymentData.remove('tags'); // Remove 'tags' from the new payment
+
+      result = await db.insert("payments", paymentData);
+
+      // Insert tags for the new payment (if any)
+      if (payment.tags.isNotEmpty) {
+        for (var tagId in payment.tags) {
+          await db.insert("payment_tags", {
+            'payment_id': result,
+            'tag_id': tagId,
+          });
+        }
+      }
     }
 
     return result;
@@ -90,15 +159,22 @@ class PaymentDao {
 
   Future<int> deleteTransaction(int id) async {
     final db = await getDBInstance();
+
+    // Delete the tags associated with this payment
+    await db.delete("payment_tags", where: "payment_id = ?", whereArgs: [id]);
+
+    // Now delete the payment record
     var result = await db.delete("payments", where: 'id = ?', whereArgs: [id]);
+
     return result;
   }
 
   Future deleteAllTransactions() async {
     final db = await getDBInstance();
-    var result = await db.delete(
-      "payments",
-    );
+
+    // Then delete all payments
+    var result = await db.delete("payments");
+
     return result;
   }
 
@@ -364,4 +440,96 @@ class PaymentDao {
 
     return count;
   }
+
+  Future<List<Payment>> findByTags({
+    DateTimeRange? range,
+    required List<int> tagIds,
+    PaymentType? type,
+    Category? category,
+    Account? account,
+  }) async {
+    final db = await getDBInstance();
+    String where = "1=1 "; // Base condition to simplify concatenation
+    final whereArgs = <dynamic>[];
+
+    // Add tag-based filtering
+    if (tagIds.isNotEmpty) {
+      where +=
+      "AND id IN (SELECT payment_id FROM payment_tags WHERE tag_id IN (${tagIds.join(',')})) ";
+    }
+
+    // Add range filtering
+    if (range != null) {
+      where +=
+      "AND datetime BETWEEN ? AND ? ";
+      whereArgs.add(DateFormat('yyyy-MM-dd kk:mm:ss').format(range.start));
+      whereArgs.add(DateFormat('yyyy-MM-dd kk:mm:ss').format(
+          range.end.add(const Duration(days: 1)))); // Include the end date
+    }
+
+    // Add account filtering
+    if (account != null) {
+      where += "AND account = ? ";
+      whereArgs.add(account.id);
+    }
+
+    // Add category filtering
+    if (category != null) {
+      where += "AND category = ? ";
+      whereArgs.add(category.id);
+    }
+
+    // Add type filtering
+    if (type != null) {
+      where += "AND type = ? ";
+      whereArgs.add(type == PaymentType.credit ? "CR" : "DR");
+    }
+
+    // Fetch categories and accounts for mapping
+    List<Category> categories = await CategoryDao().find();
+    List<Account> accounts = await AccountDao().find();
+
+    // Execute the query
+    final rows = await db.query(
+      "payments",
+      where: where,
+      whereArgs: whereArgs,
+      orderBy: "datetime DESC, id DESC",
+    );
+
+    // Map results to Payment objects
+    List<Payment> payments = rows.map((row) {
+      Map<String, dynamic> payment = Map<String, dynamic>.from(row);
+      Account account = accounts.firstWhere((a) => a.id == payment["account"]);
+      Category category =
+      categories.firstWhere((c) => c.id == payment["category"]);
+      payment["category"] = category.toJson();
+      payment["account"] = account.toJson();
+      payment['autoCategorizationEnabled'] =
+      payment['autoCategorizationEnabled'] == 0 ? false : true;
+      return Payment.fromJson(payment);
+    }).toList();
+
+    return payments;
+  }
+
+  Future<List<Map<String, dynamic>>> fetchTagsForPayment(int? paymentId) async {
+    final db = await getDBInstance();
+
+    // Query to fetch tag details for the given payment ID
+    final rows = await db.rawQuery(
+      '''
+    SELECT tags.id, tags.name
+    FROM tags
+    INNER JOIN payment_tags ON tags.id = payment_tags.tag_id
+    WHERE payment_tags.payment_id = ?
+    ''',
+      [paymentId],
+    );
+
+    return rows; // Returning a list of maps with tag details
+  }
+
+
+
 }

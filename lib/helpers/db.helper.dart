@@ -41,21 +41,24 @@ Future<Database> getDBInstance() async {
 
 typedef MigrationCallback = Function(Database database);
 List<MigrationCallback> migrations = [v1];
-void onCreate(Database database, int version) async {
+Future<void> onCreate(Database database, int version) async {
   for (MigrationCallback callback in migrations) {
     await callback(database);
   }
 }
 
-void onUpgrade(Database database, int oldVersion, int version) async {
+Future<void> onUpgrade(Database database, int oldVersion, int version) async {
   for (int index = oldVersion; index < version; index++) {
     MigrationCallback callback = migrations[index];
     await callback(database);
   }
 }
 
+
+
 Future<void> resetDatabase() async {
   Database database = await getDBInstance();
+  database.delete("tags");
   database.delete("payments", where: "id>0");
   database.delete("accounts", where: "id>0");
   database.delete("categories", where: "id>0");
@@ -128,10 +131,15 @@ Future<dynamic> export() async {
   List<dynamic> payments = await database!.query(
     "payments",
   );
+  List<dynamic> tags = await database!.query(
+      "tags"
+  );
+
   Map<String, dynamic> data = {};
   data["accounts"] = accounts;
   data["categories"] = categories;
   data["payments"] = payments;
+  data["tags"] = tags;
 
   final path = await getExternalDocumentPath();
   String name =
@@ -145,6 +153,7 @@ Future<void> import(String path) async {
   File file = File(path);
   Map<int, int> accountsMap = {};
   Map<int, int> categoriesMap = {};
+  Map<int, int> tagsMap = {};
 
   try {
     Map<String, dynamic> data = await jsonDecode(file.readAsStringSync());
@@ -152,10 +161,19 @@ Future<void> import(String path) async {
       await transaction.delete("categories", where: "id!=0");
       await transaction.delete("accounts", where: "id!=0");
       await transaction.delete("payments", where: "id!=0");
+      await transaction.delete("tags", where: "id!=0");
 
       List<dynamic> categories = data["categories"];
       List<dynamic> accounts = data["accounts"];
       List<dynamic> payments = data["payments"];
+      List<dynamic> tags = data["tags"];
+
+      for (Map<String, dynamic> tag in tags) {
+        int id0 = tag["id"];
+        tag.remove("id");
+        int id = await transaction.insert("tags", tag);
+        tagsMap[id0] = id;
+      }
 
       for (Map<String, dynamic> category in categories) {
         int id0 = category["id"];
