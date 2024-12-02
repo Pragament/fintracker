@@ -27,6 +27,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../dao/tag_dao.dart';
+import '../../model/tag.model.dart';
+
 String greeting() {
   var hour = DateTime.now().hour;
   if (hour < 12) {
@@ -51,6 +54,8 @@ class _HomeScreenState extends State<HomeScreen> {
   EventListener? _accountEventListener;
   EventListener? _categoryEventListener;
   EventListener? _paymentEventListener;
+  EventListener? _tagEventListener;
+
   List<Payment> _payments = [];
   List<Account> _accounts = [];
   double _income = 0;
@@ -58,6 +63,11 @@ class _HomeScreenState extends State<HomeScreen> {
   List<double> _monthlyExpenses = List.generate(12, (index) => 0.0);
   Account? _selectedAccount;
   Category? _selectedCategory;
+
+  List<Tag> tags = [];
+  List<bool> selectedTags = [];
+  final TagDao tagDao = TagDao();
+  bool allSelected = true;
 
   //double _savings = 0;
 
@@ -92,44 +102,70 @@ class _HomeScreenState extends State<HomeScreen> {
   void _fetchTransactions() async {
     List<Payment> trans;
 
-    // Filter based on showing income/expense only and selected account
-
-    if (_selectedCategory == null) {
-      trans = await _paymentDao.find(range: _range, category: _category);
+    // Fetch the selected tag IDs
+    List<int> selectedTagIds = [];
+    for (int i = 0; i < selectedTags.length; i++) {
+      if (selectedTags[i]) {
+        selectedTagIds.add(tags[i].id!);
+      }
     }
-    if (_showingIncomeOnly) {
-      trans = await _paymentDao.find(
+
+    print("Selected tag IDs: $selectedTagIds");
+
+    if (!allSelected && selectedTagIds.isNotEmpty) {
+      // Fetch payments based on selected tags
+      trans = await _paymentDao.findByTags(
         range: _range,
-        type: PaymentType.debit,
+        tagIds: selectedTagIds,
         account:
-            _selectedAccount ?? _account, // Use the selected account (optional)
-        category: _selectedCategory, // Filter by selected category (mandatory)
+        _selectedAccount ?? _account,
+        category: _selectedCategory,
+        type: _showingIncomeOnly
+            ? PaymentType.debit
+            : _showingExpenseOnly
+            ? PaymentType.credit
+            : null,                        // Filter by type (income/expense)
       );
-    } else if (_showingExpenseOnly) {
-      trans = await _paymentDao.find(
-        range: _range,
-        type: PaymentType.credit,
-        account:
-            _selectedAccount ?? _account, // Use the selected account (optional)
-        category: _selectedCategory, // Filter by selected category (mandatory)
-      );
+      print("Fetched Payment: ${trans.length}");
     } else {
-      // If no filtering by income/expense
-      if (_selectedCategory != null) {
-        // Filter by category only if a category is selected
+      // Filter based on showing income/expense only and selected account
+      if (_selectedCategory == null) {
+        trans = await _paymentDao.find(range: _range, category: _category);
+      }
+      if (_showingIncomeOnly) {
         trans = await _paymentDao.find(
           range: _range,
-          category: _selectedCategory,
+          type: PaymentType.debit,
+          account:
+          _selectedAccount ?? _account, // Use the selected account (optional)
+          category: _selectedCategory, // Filter by selected category (mandatory)
         );
-      } else if (_selectedAccount != null) {
-        // If no category selected, filter by account
+      } else if (_showingExpenseOnly) {
         trans = await _paymentDao.find(
-            range: _range,
-            account: _selectedAccount // Use the selected account (optional)
-            );
+          range: _range,
+          type: PaymentType.credit,
+          account:
+          _selectedAccount ?? _account, // Use the selected account (optional)
+          category: _selectedCategory, // Filter by selected category (mandatory)
+        );
       } else {
-        // If no filters applied, fetch all transactions (unchanged)
-        trans = await _paymentDao.find(range: _range, category: _category);
+        // If no filtering by income/expense
+        if (_selectedCategory != null) {
+          // Filter by category only if a category is selected
+          trans = await _paymentDao.find(
+            range: _range,
+            category: _selectedCategory,
+          );
+        } else if (_selectedAccount != null) {
+          // If no category selected, filter by account
+          trans = await _paymentDao.find(
+              range: _range,
+              account: _selectedAccount // Use the selected account (optional)
+          );
+        } else {
+          // If no filters applied, fetch all transactions (unchanged)
+          trans = await _paymentDao.find(range: _range, category: _category);
+        }
       }
     }
 
@@ -172,11 +208,19 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  Future<void> _fetchTags() async {
+    final fetchedTags = await tagDao.findAll();
+    setState(() {
+      tags = fetchedTags;
+      selectedTags = List<bool>.filled(tags.length, false);
+    });
+  }
+
   @override
   void initState() {
     super.initState();
     _fetchTransactions();
-
+    _fetchTags();
     _accountEventListener = globalEvent.on("account_update", (data) {
       debugPrint("accounts are changed");
       _fetchTransactions();
@@ -190,6 +234,12 @@ class _HomeScreenState extends State<HomeScreen> {
     _paymentEventListener = globalEvent.on("payment_update", (data) {
       debugPrint("payments are changed");
       _fetchTransactions();
+      _fetchTags();
+    });
+
+    _tagEventListener = globalEvent.on("tag_update", (data) {
+      debugPrint("tags are updated");
+      _fetchTags();
     });
   }
 
@@ -198,6 +248,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _accountEventListener?.cancel();
     _categoryEventListener?.cancel();
     _paymentEventListener?.cancel();
+    _tagEventListener?.cancel();
     super.dispose();
   }
 
@@ -414,6 +465,8 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // TagsStrip(),
+          _buildTagsStrip(context),
           Container(
             margin:
                 const EdgeInsets.only(left: 15, right: 15, bottom: 15, top: 0),
@@ -654,5 +707,92 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
+  }
+
+
+  void toggleAllTags() {
+    setState(() {
+      allSelected = !allSelected;
+      selectedTags = List<bool>.filled(tags.length, allSelected);
+      _fetchTransactions();
+    });
+  }
+
+  void toggleTagSelection(int index, bool value) {
+    setState(() {
+      selectedTags[index] = value;
+      allSelected = selectedTags.every((selected) => selected);
+      _fetchTransactions();
+    });
+  }
+
+  Widget _buildTagsStrip(BuildContext context) {
+    return tags.isEmpty
+        ? const SizedBox()
+        : Column(
+          children: [
+            SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+            children: [
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 5),
+                padding: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.black45)
+                ),
+                child: Row(
+                  children: [
+                    InkWell(
+                      child: Icon(allSelected
+                          ? Icons.check_box
+                          : Icons.check_box_outline_blank),
+                      onTap: () {
+                        toggleAllTags();
+                      },
+                    ),
+                    const Text(
+                      'Select All',
+                      style: TextStyle(fontSize: 16),
+                    ),
+                  ],
+                ),
+              ),
+              Row(
+                children: List.generate(tags.length, (index) {
+                  final tag = tags[index];
+                  return Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 5),
+                    padding: const EdgeInsets.all(7),
+                    decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.black45)
+                    ),
+                    child: Row(
+                      children: [
+                        InkWell(
+                          child: Icon(selectedTags[index]
+                              ? Icons.check_box
+                              : Icons.check_box_outline_blank),
+                          onTap: () {
+                            toggleTagSelection(index, !selectedTags[index] ?? false);
+                          },
+                        ),
+                        Text(
+                          tag.name,
+                          style: const TextStyle(fontSize: 16),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+              ),
+            ],
+                  ),
+                ),
+            const SizedBox(height: 10,),
+          ],
+        );
   }
 }

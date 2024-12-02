@@ -14,40 +14,47 @@ class Payment {
   String title;
   String description;
   bool autoCategorizationEnabled;
+  List<int> tags;
 
-  Payment(
-      {this.id,
-      required this.account,
-      required this.category,
-      required this.amount,
-      required this.type,
-      required this.datetime,
-      required this.title,
-      required this.description,
-      required this.autoCategorizationEnabled});
+  Payment({
+    this.id,
+    required this.account,
+    required this.category,
+    required this.amount,
+    required this.type,
+    required this.datetime,
+    required this.title,
+    required this.description,
+    required this.autoCategorizationEnabled,
+    this.tags = const [],
+  });
 
   factory Payment.fromJson(Map<String, dynamic> data) {
     return Payment(
-        id: data["id"],
-        title: data["title"] ?? "",
-        description: data["description"] ?? "",
-        account: Account.fromJson(data["account"]),
-        category: Category.fromJson(data["category"]),
-        amount: data["amount"],
-        type: data["type"] == "CR" ? PaymentType.credit : PaymentType.debit,
-        datetime: DateTime.parse(data["datetime"]),
-        autoCategorizationEnabled: data["autoCategorizationEnabled"]);
+      id: data["id"],
+      title: data["title"] ?? "",
+      description: data["description"] ?? "",
+      account: Account.fromJson(data["account"]),
+      category: Category.fromJson(data["category"]),
+      amount: data["amount"],
+      type: data["type"] == "CR" ? PaymentType.credit : PaymentType.debit,
+      datetime: DateTime.parse(data["datetime"]),
+      autoCategorizationEnabled: data["autoCategorizationEnabled"],
+      tags: List<int>.from(data["tags"] ?? []),
+    );
   }
 
   Map<String, dynamic> toJson() => {
-        "id": id,
-        "title": title,
-        "description": description,
-        "account": account.id,
-        "category": category.id,
-        "amount": amount,
-        "datetime": DateFormat('yyyy-MM-dd kk:mm:ss').format(datetime),
-        "type": type == PaymentType.credit ? "CR" : "DR",
-        "autoCategorizationEnabled": autoCategorizationEnabled,
-      };
+    "id": id,
+    "title": title,
+    "description": description,
+    "account": account.id,
+    "category": category.id,
+    "amount": amount,
+    "datetime": DateFormat('yyyy-MM-dd kk:mm:ss').format(datetime),
+    "type": type == PaymentType.credit ? "CR" : "DR",
+    "autoCategorizationEnabled": autoCategorizationEnabled,
+    "tags": tags,
+  };
 }
+

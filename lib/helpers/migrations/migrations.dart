@@ -41,4 +41,18 @@ void v1(Database database) async {
       "color INTEGER,"
       "isDefault INTEGER"
       ")");
+
+  await database.execute("CREATE TABLE tags ("
+      "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+      "name TEXT NOT NULL"
+      ")"
+  );
+
+  await database.execute("CREATE TABLE payment_tags ("
+      "payment_id INTEGER,"
+      "tag_id INTEGER,"
+      "FOREIGN KEY(payment_id) REFERENCES payments(id),"
+      "FOREIGN KEY(tag_id) REFERENCES tags(id)"
+      ");");
+
 }
