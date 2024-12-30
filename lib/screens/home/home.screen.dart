@@ -462,8 +462,12 @@ class _HomeScreenState extends State<HomeScreen> {
             payment.account.holderName,
             payment.account.accountNumber,
             payment.category.name,
-            // payment.type == PaymentType.debit ? payment.amount.toString() : '',
-            // payment.type == PaymentType.credit ? payment.amount.toString() : '',
+            payment.type == PaymentType.debit
+                ? '-${payment.amount.toString()}'
+                : '',
+            payment.type == PaymentType.credit
+                ? '+${payment.amount.toString()}'
+                : '',
             payment.datetime.toIso8601String(),
             payment.title,
             payment.description,
