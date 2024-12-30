@@ -57,24 +57,24 @@ class _AddUserSettingsScreenState extends State<AddUserSettingsScreen> {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            SizedBox(
+            const SizedBox(
               height: 15,
             ),
             Container(
               width: size.width * 0.9,
-              child: Text(
+              child: const Text(
                 "Default Rules",
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
             ),
             Container(
-              margin: EdgeInsets.symmetric(horizontal: 10),
+              margin: const EdgeInsets.symmetric(horizontal: 10),
               child: Card(
                 elevation: 5,
                 child: ListView.builder(
                     itemCount: listOfDefaultRules.length,
                     shrinkWrap: true,
-                    physics: NeverScrollableScrollPhysics(),
+                    physics: const NeverScrollableScrollPhysics(),
                     itemBuilder: (context, index) {
                       final rule = listOfDefaultRules[index];
                       return Column(
@@ -86,7 +86,7 @@ class _AddUserSettingsScreenState extends State<AddUserSettingsScreen> {
                               expandedAlignment: Alignment.centerLeft,
                               expandedCrossAxisAlignment: CrossAxisAlignment.start,
                               title: Text(
-                                rule['title'],style: TextStyle(fontWeight: FontWeight.bold,fontSize: 18),
+                                rule['title'],style: const TextStyle(fontWeight: FontWeight.bold,fontSize: 18),
                               ),
                               children: (rule['items'] as List)
                                   .map(
@@ -98,32 +98,32 @@ class _AddUserSettingsScreenState extends State<AddUserSettingsScreen> {
                                   .toList(),
                             ),
                           ),
-                          listOfDefaultRules.length-1 != index ? Divider(
+                          listOfDefaultRules.length-1 != index ? const Divider(
                             color: Colors.grey,
                             thickness: 1.5,
-                          ) : SizedBox(),
+                          ) : const SizedBox(),
                         ],
                       );
                     }),
               ),
             ),
-            SizedBox(
+            const SizedBox(
               height: 15,
             ),
             Container(
               width: size.width * 0.9,
-              child: Text(
+              child: const Text(
                 "Your Rules",
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
             ),
             Container(
-              margin: EdgeInsets.symmetric(horizontal: 10),
+              margin: const EdgeInsets.symmetric(horizontal: 10),
               child: Card(
                 elevation: 5,
                 child: ListView.builder(
                     shrinkWrap: true,
-                    physics: NeverScrollableScrollPhysics(),
+                    physics: const NeverScrollableScrollPhysics(),
                     itemCount: listOfUserRules.length,
                     itemBuilder: (context, index) {
                       String title = listOfUserRules[index];

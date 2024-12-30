@@ -45,40 +45,57 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ListTile(
               key: const Key('settings_name_option'),
               dense: true,
-              onTap: (){
-                showDialog(context: context, builder: (context){
-                  TextEditingController controller = TextEditingController(text: context.read<AppCubit>().state.username);
-                  return AlertDialog(
-                    title: const Text("Profile", style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18),),
-                    content: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text("What should we call you?", style: theme.textTheme.bodyLarge!.apply(color: ColorHelper.darken(theme.textTheme.bodyLarge!.color!), fontWeightDelta: 1),),
-                        const SizedBox(height: 15,),
-                        TextFormField(
-                          key: const Key('name_input'),
-                          controller: controller,
-                          decoration: InputDecoration(
-                              label: const Text("Name"),
-                              hintText: "Enter your name",
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(15),
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 15)
-                          ),
-                        )
-                      ],
-                    ),
-                    actions: [
-                      Row(
-                        children: [
-                          Expanded(
-                              child: AppButton(
-                                onPressed: (){
-                                  if(controller.text.isEmpty){
-                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please enter name")));
-
+              onTap: () {
+                showDialog(
+                    context: context,
+                    builder: (context) {
+                      TextEditingController controller = TextEditingController(
+                          text: context.read<AppCubit>().state.username);
+                      return AlertDialog(
+                        title: const Text(
+                          "Profile",
+                          style: TextStyle(
+                              fontWeight: FontWeight.w600, fontSize: 18),
+                        ),
+                        content: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              "What should we call you?",
+                              style: theme.textTheme.bodyLarge!.apply(
+                                  color: ColorHelper.darken(
+                                      theme.textTheme.bodyLarge!.color!),
+                                  fontWeightDelta: 1),
+                            ),
+                            const SizedBox(
+                              height: 15,
+                            ),
+                            TextFormField(
+                              key: const Key('name_input'),
+                              controller: controller,
+                              decoration: InputDecoration(
+                                  label: const Text("Name"),
+                                  hintText: "Enter your name",
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(15),
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                      vertical: 12, horizontal: 15)),
+                            )
+                          ],
+                        ),
+                        actions: [
+                          Row(
+                            children: [
+                              Expanded(
+                                  child: AppButton(
+                                onPressed: () {
+                                  if (controller.text.isEmpty) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                            content:
+                                                Text("Please enter name")));
                                   } else {
                                     context
                                         .read<AppCubit>()
@@ -140,40 +157,94 @@ class _SettingsScreenState extends State<SettingsScreen> {
               key: const Key('settings_export_option'),
               dense: true,
               onTap: () async {
-                ConfirmModal.showConfirmDialog(context,
-                    title: "Are you sure?",
-                    content:
-                        const Text("want to export all the data to a file"),
-                    onConfirm: () async {
-                  Navigator.of(context).pop();
-                  LoadingModal.showLoadingDialog(context,
-                      content: const Text("Exporting data please wait"));
-                  await export().then((value) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                        content: Text("File has been saved in $value")));
-                  }).catchError((err) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                        content:
-                            Text("Something went wrong while exporting data")));
-                  }).whenComplete(() {
+                // Show format selection dialog before export
+                String selectedFormat = await showDialog<String>(
+                      context: context,
+                      builder: (context) {
+                        return AlertDialog(
+                          title: const Text('Choose Export Format'),
+                          content: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              ListTile(
+                                title: const Text("Amount, Type"),
+                                onTap: () {
+                                  Navigator.of(context).pop("Amount, Type");
+                                },
+                              ),
+                              ListTile(
+                                title: const Text("Debit, Credit"),
+                                onTap: () {
+                                  Navigator.of(context).pop("Debit, Credit");
+                                },
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ) ??
+                    "Amount, Type"; // Default format if none selected
+
+                // Proceed with the export confirmation
+                ConfirmModal.showConfirmDialog(
+                  context,
+                  title: "Are you sure?",
+                  content: const Text("Want to export all the data to a file?"),
+                  onConfirm: () async {
                     Navigator.of(context).pop();
-                  });
-                }, onCancel: () {
-                  Navigator.of(context).pop();
-                });
+
+                    // Show loading modal
+                    LoadingModal.showLoadingDialog(
+                      context,
+                      content: const Text("Exporting data, please wait..."),
+                    );
+
+                    try {
+                      // Call the export function with selected format
+                      String exportPath = await export(format: selectedFormat);
+
+                      // Show success message with export path
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                            content:
+                                Text("File has been saved in $exportPath")),
+                      );
+                    } catch (err) {
+                      // Handle any errors during export
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content: Text(
+                                "Something went wrong while exporting data")),
+                      );
+                    } finally {
+                      // Hide loading modal after completion
+                      Navigator.of(context).pop();
+                    }
+                  },
+                  onCancel: () {
+                    Navigator.of(context).pop(); // Close the dialog if canceled
+                  },
+                );
               },
               leading: const CircleAvatar(
-                  child: Icon(
-                Symbols.download,
-              )),
-              title: Text('Export',
-                  style: Theme.of(context).textTheme.bodyMedium?.merge(
+                child: Icon(Symbols.download),
+              ),
+              title: Text(
+                'Export',
+                style: Theme.of(context).textTheme.bodyMedium?.merge(
                       const TextStyle(
-                          fontWeight: FontWeight.w500, fontSize: 15))),
-              subtitle: Text("Export to file",
-                  style: Theme.of(context).textTheme.bodySmall?.apply(
-                      color: Colors.grey, overflow: TextOverflow.ellipsis)),
+                          fontWeight: FontWeight.w500, fontSize: 15),
+                    ),
+              ),
+              subtitle: Text(
+                "Export to file",
+                style: Theme.of(context).textTheme.bodySmall?.apply(
+                      color: Colors.grey,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+              ),
             ),
+
             ListTile(
               key: const Key('import_confirm_button'),
               dense: true,

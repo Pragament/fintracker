@@ -121,31 +121,83 @@ Future<String> getExternalDocumentPath() async {
   return exPath;
 }
 
-Future<dynamic> export() async {
-  List<dynamic> accounts = await database!.query(
-    "accounts",
-  );
-  List<dynamic> categories = await database!.query(
-    "categories",
-  );
-  List<dynamic> payments = await database!.query(
-    "payments",
-  );
-  List<dynamic> tags = await database!.query(
-      "tags"
-  );
+// Future<dynamic> export() async {
+//   List<dynamic> accounts = await database!.query(
+//     "accounts",
+//   );
+//   List<dynamic> categories = await database!.query(
+//     "categories",
+//   );
+//   List<dynamic> payments = await database!.query(
+//     "payments",
+//   );
+//   List<dynamic> tags = await database!.query(
+//       "tags"
+//   );
+  
 
+//   Map<String, dynamic> data = {};
+//   data["accounts"] = accounts;
+//   data["categories"] = categories;
+//   data["payments"] = payments;
+//   data["tags"] = tags;
+
+//   final path = await getExternalDocumentPath();
+//   String name =
+//       "fintracker-backup-${DateTime.now().millisecondsSinceEpoch}.json";
+//   File file = File('$path/$name');
+//   await file.writeAsString(jsonEncode(data));
+//   return file.path;
+// }
+
+Future<dynamic> export({required String format}) async {
+  // Query data from the database
+  List<dynamic> accounts = await database!.query("accounts");
+  List<dynamic> categories = await database!.query("categories");
+  List<dynamic> payments = await database!.query("payments");
+  List<dynamic> tags = await database!.query("tags");
+
+  // Map to hold data for export
   Map<String, dynamic> data = {};
   data["accounts"] = accounts;
   data["categories"] = categories;
-  data["payments"] = payments;
   data["tags"] = tags;
 
+  // Adjust payments data based on the selected format
+  List<Map<String, dynamic>> formattedPayments = [];
+  for (var payment in payments) {
+    Map<String, dynamic> formattedPayment = {};
+
+    if (format == "Amount, Type") {
+      // Keep the existing "Amount" and "Type" fields
+      formattedPayment['Amount'] = payment['amount'];
+      formattedPayment['Type'] = payment['type'];
+    } else if (format == "Debit, Credit") {
+      // Format as "Debit" and "Credit" fields
+      formattedPayment['Debit'] = payment['type'] == 'Debit' ? payment['amount'] : 0;
+      formattedPayment['Credit'] = payment['type'] == 'Credit' ? payment['amount'] : 0;
+    }
+
+    // Add other common fields
+    formattedPayment['Date'] = payment['date'];
+    formattedPayment['Title'] = payment['title'];
+    formattedPayment['Description'] = payment['description'];
+
+    formattedPayments.add(formattedPayment);
+  }
+
+  // Add formatted payments to the data map
+  data["payments"] = formattedPayments;
+
+  // Get the external document path and create a file
   final path = await getExternalDocumentPath();
-  String name =
-      "fintracker-backup-${DateTime.now().millisecondsSinceEpoch}.json";
+  String name = "fintracker-backup-${DateTime.now().millisecondsSinceEpoch}.json";
   File file = File('$path/$name');
+
+  // Write the data to the file
   await file.writeAsString(jsonEncode(data));
+
+  // Return the file path
   return file.path;
 }
 
