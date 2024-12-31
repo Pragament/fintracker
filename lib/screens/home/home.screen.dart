@@ -8,6 +8,7 @@ import 'package:fintracker/dao/payment_dao.dart';
 import 'package:fintracker/events.dart';
 import 'package:fintracker/model/account.model.dart';
 import 'package:fintracker/model/category.model.dart';
+import 'package:fintracker/model/default_account.model.dart';
 import 'package:fintracker/model/payment.model.dart';
 import 'package:fintracker/screens/home/widgets/date_picker.dart';
 import 'package:fintracker/screens/home/widgets/line_chart.dart';
@@ -26,6 +27,7 @@ import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:collection/collection.dart';
 
 import '../../dao/tag_dao.dart';
 import '../../model/tag.model.dart';
@@ -81,6 +83,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _showingIncomeOnly = false; // New state variable
   bool _showingExpenseOnly = false;
   String exportFormat = "Amount, Type";
+  String importFormat = "Amount, Type";
 
   void openAddPaymentPage(PaymentType type) async {
     Navigator.of(context)
@@ -253,102 +256,6 @@ class _HomeScreenState extends State<HomeScreen> {
     _tagEventListener?.cancel();
     super.dispose();
   }
-
-  // Future<void> exportToCSV(BuildContext context) async {
-  //   try {
-  //     // Reverse the payments list to ensure correct order
-  //     final reversedPayments = List<Payment>.from(_payments.reversed);
-  //     // List to hold the CSV data
-  //     List<List<String>> csvData = [];
-  //     // Add the header row
-  //     // Add the header row
-  //     csvData.add([
-  //       "ID",
-  //       "Account Name",
-  //       "Account Holder",
-  //       "Account Number",
-  //       "Category",
-  //       "Amount",
-  //       "Type",
-  //       "Date",
-  //       "Title",
-  //       "Description",
-  //       "Auto Categorization"
-  //     ]);
-  //     // Add each payment's data
-  //     for (var payment in reversedPayments) {
-  //       csvData.add([
-  //         payment.id?.toString() ?? '',
-  //         payment.account.name, // Account name
-  //         payment.account.holderName, // Account holder's name
-  //         payment.account.accountNumber, // Account number
-  //         payment.category.name, // Category name
-  //         payment.amount.toString(),
-  //         payment.type.toString().split('.').last, // Enum: credit or debit
-  //         payment.datetime.toIso8601String(),
-  //         payment.title,
-  //         payment.description,
-  //         payment.autoCategorizationEnabled ? "Enabled" : "Disabled"
-  //       ]);
-  //     }
-  //     // Convert to CSV string
-  //     String csv = const ListToCsvConverter().convert(csvData);
-  //     // Get the directory to save the file
-  //     Directory directory = await getApplicationDocumentsDirectory();
-  //     final path = "/storage/emulated/0/Download/${reversedPayments[0].datetime.day}payments.csv";
-  //     final file = File(path);
-  //     await file.writeAsString(csv);
-  //     // Show the dialog box to let the user choose an action
-  //     showDialog(
-  //       context: context,
-  //       builder: (BuildContext context) {
-  //         return AlertDialog(
-  //           title: Text("Export Options"),
-  //           content: Text(
-  //               "Would you like to download the CSV or share it via WhatsApp?"),
-  //           actions: [
-  //             TextButton(
-  //               onPressed: () async {
-
-  //                 Navigator.of(context).pop();
-
-  //                 // Open the file directly for the user to download it
-  //                 final result = await OpenFile.open(file.path);
-  //                //  print(result.message);
-  //                 ScaffoldMessenger.of(context).showSnackBar(
-  //                   SnackBar(content: Text('CSV saved to: ${file.path}')
-  //                   ),
-  //                 );
-
-  //               },
-  //               child: Text("Download"),
-  //             ),
-  //             TextButton(
-  //               onPressed: () async {
-  //                 // Open the file using XFile
-  //                 final xfile = XFile(file.path);
-  //                 // Share the file via WhatsApp
-  //                 final result = await Share.shareXFiles([xfile],
-  //                     text: "Here is the CSV file of Payment");
-  //                 if (result.status == ShareResultStatus.success)
-  //                   ScaffoldMessenger.of(context).showSnackBar(
-  //                     SnackBar(content: Text('Shared Successfully')),
-  //                   );
-  //                 await file.delete();
-  //                 Navigator.of(context).pop(); // Close the dialog
-  //               },
-  //               child: Text("Share to WhatsApp"),
-  //             ),
-  //           ],
-  //         );
-  //       },
-  //     );
-  //   } catch (e) {
-  //     print("Error while exporting CSV: $e");
-  //   }
-  // }
-
-  // Other member variables...
 
   Future<void> _showExportOptions(BuildContext context) async {
     showDialog(
@@ -557,73 +464,103 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // Function to import CSV data and map it to your Payment model
   Future<void> importPaymentsFromCSV(BuildContext context) async {
     try {
-      // File picker to allow user to select CSV file
+      String? selectedFormat = await _showImportFormatDialog(context);
+      if (selectedFormat == null) return;
+
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['csv'], // CSV only
+        allowedExtensions: ['csv'],
       );
 
       if (result != null && result.files.single.path != null) {
-        //if file exist
         File file = File(result.files.single.path!);
-
-        // Read the file contents
         final input = await file.readAsString();
-
-        // Parse the CSV file
         List<List<dynamic>> csvData = const CsvToListConverter().convert(input);
 
-        List<Payment> importedPayments = [];
-        // Skip the header row and process the rest
-
+        List<Payment> parsedPayments = [];
         for (int i = 1; i < csvData.length; i++) {
           var row = csvData[i];
-          // Map CSV data to Payment fields
-          Payment payment = Payment(
-            id: int.tryParse(row[0]?.toString() ?? ''),
-            account: Account(
+          Payment? payment;
+          if (selectedFormat == "Amount, Type") {
+            payment = Payment(
               id: null,
-              // Assuming account ID isn't available in CSV, handle as needed
-              name: row[1].toString(),
-              holderName: row[2].toString(),
-              accountNumber: row[3].toString(),
-              icon: Icons.account_balance,
-              // Assign a default icon
-              color: Colors.blue,
-              // Default color, adjust as necessary
-              isDefault: false,
-              income: 0.0,
-              expense: 0.0,
-              balance: 0.0,
-            ),
-            category: Category(
-              id: null, // Assuming category ID isn't available in CSV
-              name: row[4].toString(),
-              icon: Icons.category, // Default icon
-              color: Colors.green, // Default color, adjust as necessary
-            ),
-            amount: double.parse(row[5]?.toString() ?? '0.0'),
-            type: row[6] == "credit" ? PaymentType.credit : PaymentType.debit,
-            datetime: DateTime.parse(row[7]),
-            title: row[8]?.toString() ?? '',
-            description: row[9]?.toString() ?? '',
-            autoCategorizationEnabled: row[10] == "Enabled" ? true : false,
-          );
-          importedPayments.add(payment);
+              account: defaultAccount(),
+              category: defaultCategory(),
+              amount: double.parse(row[0]?.toString() ?? '0.0'),
+              type: row[1].toString().toLowerCase() == "credit"
+                  ? PaymentType.credit
+                  : PaymentType.debit,
+              datetime: DateTime.now(),
+              title: "Imported Payment",
+              description: "",
+              autoCategorizationEnabled: false,
+            );
+          } else if (selectedFormat == "Debit, Credit") {
+            double debit = double.tryParse(row[0]?.toString() ?? '0.0') ?? 0.0;
+            double credit = double.tryParse(row[1]?.toString() ?? '0.0') ?? 0.0;
+            payment = Payment(
+              id: null,
+              account: defaultAccount(),
+              category: defaultCategory(),
+              amount: debit > 0 ? debit : credit,
+              type: debit > 0 ? PaymentType.debit : PaymentType.credit,
+              datetime: DateTime.now(),
+              title: "Imported Payment",
+              description: "",
+              autoCategorizationEnabled: false,
+            );
+          }
+          if (payment != null) parsedPayments.add(payment);
         }
-        // Now, do something with the imported payments (e.g., add to your current list)
-        setState(() {
-          _payments = importedPayments;
-        });
 
-        Navigator.of(context).pop(); //pop the drawer
-        // Show a confirmation message
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Payments imported successfully!')),
+        List<Payment> newTransactions = [];
+        List<Payment> updatedTransactions = [];
+        List<Payment> localOnlyTransactions = List.from(_payments);
+
+        for (var csvPayment in parsedPayments) {
+          Payment? match = _payments.firstWhereOrNull(
+              (local) => csvPayment.datetime.isAtSameMomentAs(local.datetime));
+          if (match != null) {
+            updatedTransactions.add(csvPayment);
+            localOnlyTransactions.remove(match);
+          } else {
+            newTransactions.add(csvPayment);
+          }
+        }
+
+        bool? proceed = await _showImportSummaryDialog(
+          context,
+          newTransactions: newTransactions,
+          updatedTransactions: updatedTransactions,
+          localOnlyTransactions: localOnlyTransactions,
         );
+
+        if (proceed == true) {
+          bool? deleteLocal = await _confirmDeleteLocalTransactions(
+            context,
+            localOnlyTransactions.length,
+          );
+
+          setState(() {
+            _payments.addAll(newTransactions);
+            for (var updated in updatedTransactions) {
+              _payments.removeWhere(
+                  (local) => updated.datetime.isAtSameMomentAs(local.datetime));
+              _payments.add(updated);
+            }
+
+            if (deleteLocal == true) {
+              _payments.removeWhere(
+                  (local) => localOnlyTransactions.contains(local));
+            }
+          });
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Payments imported successfully!')),
+          );
+        }
       }
     } catch (e) {
       print("Error while importing CSV: $e");
@@ -631,6 +568,143 @@ class _HomeScreenState extends State<HomeScreen> {
         SnackBar(content: Text('Error importing CSV: $e')),
       );
     }
+  }
+
+  Future<bool?> _confirmDeleteLocalTransactions(
+      BuildContext context, int count) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Delete Local Transactions"),
+        content: Text(
+            "There are $count transactions in your local data that are not in the CSV file. Do you want to delete them?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("No"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("Yes"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  bool validateCSV(List<List<dynamic>> csvData) {
+    if (csvData.isEmpty || csvData[0].length < 2) {
+      return false; // Invalid structure
+    }
+    for (int i = 1; i < csvData.length; i++) {
+      var row = csvData[i];
+      if (row[0] == null || double.tryParse(row[0].toString()) == null) {
+        return false; // Invalid amount
+      }
+      if (row[1] == null ||
+          !["credit", "debit"].contains(row[1].toString().toLowerCase())) {
+        return false; // Invalid type
+      }
+    }
+    return true;
+  }
+
+  Future<bool?> _showImportSummaryDialog(
+    BuildContext context, {
+    required List<Payment> newTransactions,
+    required List<Payment> updatedTransactions,
+    required List<Payment> localOnlyTransactions,
+  }) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Import Summary"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text("New Transactions: ${newTransactions.length}"),
+            Text("Updated Transactions: ${updatedTransactions.length}"),
+            Text("Local-Only Transactions: ${localOnlyTransactions.length}"),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("Cancel"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("Proceed"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<String?> _showImportFormatDialog(BuildContext context) async {
+    String? importFormat = "Amount, Type"; // Default format
+
+    return await showDialog<String>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text("Select Import Format"),
+          content: SingleChildScrollView(
+            child: StatefulBuilder(
+              builder: (BuildContext context, StateSetter setState) {
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    RadioListTile<String>(
+                      title: const Text("Amount, Type"),
+                      value: "Amount, Type",
+                      groupValue: importFormat,
+                      onChanged: (String? value) {
+                        setState(() {
+                          importFormat = value; // Update the state
+                        });
+                      },
+                    ),
+                    RadioListTile<String>(
+                      title: const Text("Debit, Credit"),
+                      value: "Debit, Credit",
+                      groupValue: importFormat,
+                      onChanged: (String? value) {
+                        setState(() {
+                          importFormat = value; // Update the state
+                        });
+                      },
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(null); // Cancel the dialog
+              },
+              child: const Text("Cancel"),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (importFormat != null) {
+                  Navigator.of(context).pop(importFormat); // Confirm selection
+                } else {
+                  // Optionally show a message if no format is selected
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                        content: Text('Please select an import format.')),
+                  );
+                }
+              },
+              child: const Text("Confirm"),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -662,12 +736,18 @@ class _HomeScreenState extends State<HomeScreen> {
             ListTile(
               title: const Text('Import CSV File'),
               trailing: IconButton(
-                icon: const Icon(Icons.help_outline),
-                onPressed: () {
-                  importPaymentsFromCSV(context);
+                icon: const Icon(Icons.upload_file), // Updated icon for clarity
+                onPressed: () async {
+                  // Call the import function and handle any further actions here
+                  await importPaymentsFromCSV(context);
                 },
               ),
+              subtitle: const Text(
+                'Select a CSV file in the supported format (Amount, Type or Debit, Credit).',
+                style: TextStyle(fontSize: 12.0, color: Colors.grey),
+              ),
             ),
+
             // Add other items if needed
           ],
         ),
