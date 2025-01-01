@@ -8,6 +8,7 @@ import 'package:fintracker/dao/payment_dao.dart';
 import 'package:fintracker/events.dart';
 import 'package:fintracker/model/account.model.dart';
 import 'package:fintracker/model/category.model.dart';
+import 'package:fintracker/model/default_account.model.dart';
 import 'package:fintracker/model/payment.model.dart';
 import 'package:fintracker/screens/home/widgets/date_picker.dart';
 import 'package:fintracker/screens/home/widgets/line_chart.dart';
@@ -26,6 +27,7 @@ import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:collection/collection.dart';
 
 import '../../dao/tag_dao.dart';
 import '../../model/tag.model.dart';
@@ -80,6 +82,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Category? _category;
   bool _showingIncomeOnly = false; // New state variable
   bool _showingExpenseOnly = false;
+  String exportFormat = "Amount, Type";
+  String importFormat = "Amount, Type";
 
   void openAddPaymentPage(PaymentType type) async {
     Navigator.of(context)
@@ -117,14 +121,13 @@ class _HomeScreenState extends State<HomeScreen> {
       trans = await _paymentDao.findByTags(
         range: _range,
         tagIds: selectedTagIds,
-        account:
-        _selectedAccount ?? _account,
+        account: _selectedAccount ?? _account,
         category: _selectedCategory,
         type: _showingIncomeOnly
             ? PaymentType.debit
             : _showingExpenseOnly
-            ? PaymentType.credit
-            : null,                        // Filter by type (income/expense)
+                ? PaymentType.credit
+                : null, // Filter by type (income/expense)
       );
       print("Fetched Payment: ${trans.length}");
     } else {
@@ -136,17 +139,19 @@ class _HomeScreenState extends State<HomeScreen> {
         trans = await _paymentDao.find(
           range: _range,
           type: PaymentType.debit,
-          account:
-          _selectedAccount ?? _account, // Use the selected account (optional)
-          category: _selectedCategory, // Filter by selected category (mandatory)
+          account: _selectedAccount ??
+              _account, // Use the selected account (optional)
+          category:
+              _selectedCategory, // Filter by selected category (mandatory)
         );
       } else if (_showingExpenseOnly) {
         trans = await _paymentDao.find(
           range: _range,
           type: PaymentType.credit,
-          account:
-          _selectedAccount ?? _account, // Use the selected account (optional)
-          category: _selectedCategory, // Filter by selected category (mandatory)
+          account: _selectedAccount ??
+              _account, // Use the selected account (optional)
+          category:
+              _selectedCategory, // Filter by selected category (mandatory)
         );
       } else {
         // If no filtering by income/expense
@@ -161,7 +166,7 @@ class _HomeScreenState extends State<HomeScreen> {
           trans = await _paymentDao.find(
               range: _range,
               account: _selectedAccount // Use the selected account (optional)
-          );
+              );
         } else {
           // If no filters applied, fetch all transactions (unchanged)
           trans = await _paymentDao.find(range: _range, category: _category);
@@ -252,74 +257,187 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  Future<void> exportToCSV(BuildContext context) async {
+  Future<void> _showExportOptions(BuildContext context) async {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text("Select Export Format"),
+          content: StatefulBuilder(
+            builder: (BuildContext context, StateSetter setState) {
+              return Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ListTile(
+                      title: const Text("Amount, Type"),
+                      leading: Radio<String>(
+                        value: "Amount, Type",
+                        groupValue: exportFormat,
+                        onChanged: (String? value) {
+                          setState(() {
+                            exportFormat =
+                                value ?? "Amount, Type"; // Update export format
+                          });
+                        },
+                      ),
+                    ),
+                    ListTile(
+                      title: const Text("Debit, Credit"),
+                      leading: Radio<String>(
+                        value: "Debit, Credit",
+                        groupValue: exportFormat,
+                        onChanged: (String? value) {
+                          setState(() {
+                            exportFormat = value ??
+                                "Debit, Credit"; // Update export format
+                          });
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+          actions: [
+            // Cancel Button
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(); // Close the dialog
+              },
+              child: const Text("Cancel"),
+            ),
+            // Confirm Button
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(); // Close the dialog
+                exportToCSV(
+                    context, exportFormat); // Confirm the selected format
+              },
+              child: const Text("Confirm"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> exportToCSV(BuildContext context, String exportFormat) async {
     try {
-      // Reverse the payments list to ensure correct order
       final reversedPayments = List<Payment>.from(_payments.reversed);
-      // List to hold the CSV data
       List<List<String>> csvData = [];
-      // Add the header row
-      // Add the header row
-      csvData.add([
-        "ID",
-        "Account Name",
-        "Account Holder",
-        "Account Number",
-        "Category",
-        "Amount",
-        "Type",
-        "Date",
-        "Title",
-        "Description",
-        "Auto Categorization"
-      ]);
-      // Add each payment's data
-      for (var payment in reversedPayments) {
+
+      // Add the header row based on the selected export format
+      if (exportFormat == "Debit, Credit") {
         csvData.add([
-          payment.id?.toString() ?? '',
-          payment.account.name, // Account name
-          payment.account.holderName, // Account holder's name
-          payment.account.accountNumber, // Account number
-          payment.category.name, // Category name
-          payment.amount.toString(),
-          payment.type.toString().split('.').last, // Enum: credit or debit
-          payment.datetime.toIso8601String(),
-          payment.title,
-          payment.description,
-          payment.autoCategorizationEnabled ? "Enabled" : "Disabled"
+          "ID",
+          "Account Name",
+          "Account Holder",
+          "Account Number",
+          "Category",
+          "Debit",
+          "Credit",
+          "Date",
+          "Title",
+          "Description",
+          "Auto Categorization"
+        ]);
+      } else {
+        csvData.add([
+          "ID",
+          "Account Name",
+          "Account Holder",
+          "Account Number",
+          "Category",
+          "Amount",
+          "Type",
+          "Date",
+          "Title",
+          "Description",
+          "Auto Categorization"
         ]);
       }
+
+      // Add each payment's data
+      for (var payment in reversedPayments) {
+        if (exportFormat == "Debit, Credit") {
+          csvData.add([
+            payment.id?.toString() ?? '',
+            payment.account.name,
+            payment.account.holderName,
+            payment.account.accountNumber,
+            payment.category.name,
+            payment.type == PaymentType.debit
+                ? '-${payment.amount.toString()}'
+                : '',
+            payment.type == PaymentType.credit
+                ? '+${payment.amount.toString()}'
+                : '',
+            payment.datetime.toIso8601String(),
+            payment.title,
+            payment.description,
+            payment.autoCategorizationEnabled ? "Enabled" : "Disabled"
+          ]);
+        } else {
+          csvData.add([
+            payment.id?.toString() ?? '',
+            payment.account.name,
+            payment.account.holderName,
+            payment.account.accountNumber,
+            payment.category.name,
+            payment.amount.toString(),
+            payment.type.toString().split('.').last,
+            payment.datetime.toIso8601String(),
+            payment.title,
+            payment.description,
+            payment.autoCategorizationEnabled ? "Enabled" : "Disabled"
+          ]);
+        }
+      }
+
       // Convert to CSV string
       String csv = const ListToCsvConverter().convert(csvData);
+
       // Get the directory to save the file
       Directory directory = await getApplicationDocumentsDirectory();
-      final path = "/storage/emulated/0/Download/${reversedPayments[0].datetime.day}payments.csv";
+      final path =
+          "/storage/emulated/0/Download/${reversedPayments[0].datetime.day}payments.csv";
       final file = File(path);
       await file.writeAsString(csv);
-      // Show the dialog box to let the user choose an action
+
+      // Show a dialog with preview of transactions and options for the user
       showDialog(
         context: context,
         builder: (BuildContext context) {
           return AlertDialog(
-            title: Text("Export Options"),
-            content: Text(
-                "Would you like to download the CSV or share it via WhatsApp?"),
+            title: const Text("Export Options"),
+            content: Column(
+              children: [
+                Text(
+                    "New Transactions: ${reversedPayments.length}"), // Replace with actual filtered list count
+                const Text(
+                    "Updated Transactions: 0"), // Replace with actual filtered list count
+                const Text(
+                    "Local-Only Transactions: 0"), // Replace with actual filtered list count
+                const SizedBox(height: 20),
+                const Text(
+                    "Would you like to download the CSV or share it via WhatsApp?"),
+              ],
+            ),
             actions: [
               TextButton(
                 onPressed: () async {
-
                   Navigator.of(context).pop();
 
                   // Open the file directly for the user to download it
                   final result = await OpenFile.open(file.path);
-                 //  print(result.message);
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('CSV saved to: ${file.path}')
-                    ),
+                    SnackBar(content: Text('CSV saved to: ${file.path}')),
                   );
-
                 },
-                child: Text("Download"),
+                child: const Text("Download"),
               ),
               TextButton(
                 onPressed: () async {
@@ -330,12 +448,12 @@ class _HomeScreenState extends State<HomeScreen> {
                       text: "Here is the CSV file of Payment");
                   if (result.status == ShareResultStatus.success)
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Shared Successfully')),
+                      const SnackBar(content: Text('Shared Successfully')),
                     );
                   await file.delete();
                   Navigator.of(context).pop(); // Close the dialog
                 },
-                child: Text("Share to WhatsApp"),
+                child: const Text("Share to WhatsApp"),
               ),
             ],
           );
@@ -346,73 +464,103 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // Function to import CSV data and map it to your Payment model
   Future<void> importPaymentsFromCSV(BuildContext context) async {
     try {
-      // File picker to allow user to select CSV file
+      String? selectedFormat = await _showImportFormatDialog(context);
+      if (selectedFormat == null) return;
+
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['csv'], // CSV only
+        allowedExtensions: ['csv'],
       );
 
       if (result != null && result.files.single.path != null) {
-        //if file exist
         File file = File(result.files.single.path!);
-
-        // Read the file contents
         final input = await file.readAsString();
-
-        // Parse the CSV file
         List<List<dynamic>> csvData = const CsvToListConverter().convert(input);
 
-        List<Payment> importedPayments = [];
-        // Skip the header row and process the rest
-
+        List<Payment> parsedPayments = [];
         for (int i = 1; i < csvData.length; i++) {
           var row = csvData[i];
-          // Map CSV data to Payment fields
-          Payment payment = Payment(
-            id: int.tryParse(row[0]?.toString() ?? ''),
-            account: Account(
+          Payment? payment;
+          if (selectedFormat == "Amount, Type") {
+            payment = Payment(
               id: null,
-              // Assuming account ID isn't available in CSV, handle as needed
-              name: row[1].toString(),
-              holderName: row[2].toString(),
-              accountNumber: row[3].toString(),
-              icon: Icons.account_balance,
-              // Assign a default icon
-              color: Colors.blue,
-              // Default color, adjust as necessary
-              isDefault: false,
-              income: 0.0,
-              expense: 0.0,
-              balance: 0.0,
-            ),
-            category: Category(
-              id: null, // Assuming category ID isn't available in CSV
-              name: row[4].toString(),
-              icon: Icons.category, // Default icon
-              color: Colors.green, // Default color, adjust as necessary
-            ),
-            amount: double.parse(row[5]?.toString() ?? '0.0'),
-            type: row[6] == "credit" ? PaymentType.credit : PaymentType.debit,
-            datetime: DateTime.parse(row[7]),
-            title: row[8]?.toString() ?? '',
-            description: row[9]?.toString() ?? '',
-            autoCategorizationEnabled: row[10] == "Enabled" ? true : false,
-          );
-          importedPayments.add(payment);
+              account: defaultAccount(),
+              category: defaultCategory(),
+              amount: double.parse(row[0]?.toString() ?? '0.0'),
+              type: row[1].toString().toLowerCase() == "credit"
+                  ? PaymentType.credit
+                  : PaymentType.debit,
+              datetime: DateTime.now(),
+              title: "Imported Payment",
+              description: "",
+              autoCategorizationEnabled: false,
+            );
+          } else if (selectedFormat == "Debit, Credit") {
+            double debit = double.tryParse(row[0]?.toString() ?? '0.0') ?? 0.0;
+            double credit = double.tryParse(row[1]?.toString() ?? '0.0') ?? 0.0;
+            payment = Payment(
+              id: null,
+              account: defaultAccount(),
+              category: defaultCategory(),
+              amount: debit > 0 ? debit : credit,
+              type: debit > 0 ? PaymentType.debit : PaymentType.credit,
+              datetime: DateTime.now(),
+              title: "Imported Payment",
+              description: "",
+              autoCategorizationEnabled: false,
+            );
+          }
+          if (payment != null) parsedPayments.add(payment);
         }
-        // Now, do something with the imported payments (e.g., add to your current list)
-        setState(() {
-          _payments = importedPayments;
-        });
 
-        Navigator.of(context).pop();//pop the drawer
-        // Show a confirmation message
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Payments imported successfully!')),
+        List<Payment> newTransactions = [];
+        List<Payment> updatedTransactions = [];
+        List<Payment> localOnlyTransactions = List.from(_payments);
+
+        for (var csvPayment in parsedPayments) {
+          Payment? match = _payments.firstWhereOrNull(
+              (local) => csvPayment.datetime.isAtSameMomentAs(local.datetime));
+          if (match != null) {
+            updatedTransactions.add(csvPayment);
+            localOnlyTransactions.remove(match);
+          } else {
+            newTransactions.add(csvPayment);
+          }
+        }
+
+        bool? proceed = await _showImportSummaryDialog(
+          context,
+          newTransactions: newTransactions,
+          updatedTransactions: updatedTransactions,
+          localOnlyTransactions: localOnlyTransactions,
         );
+
+        if (proceed == true) {
+          bool? deleteLocal = await _confirmDeleteLocalTransactions(
+            context,
+            localOnlyTransactions.length,
+          );
+
+          setState(() {
+            _payments.addAll(newTransactions);
+            for (var updated in updatedTransactions) {
+              _payments.removeWhere(
+                  (local) => updated.datetime.isAtSameMomentAs(local.datetime));
+              _payments.add(updated);
+            }
+
+            if (deleteLocal == true) {
+              _payments.removeWhere(
+                  (local) => localOnlyTransactions.contains(local));
+            }
+          });
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Payments imported successfully!')),
+          );
+        }
       }
     } catch (e) {
       print("Error while importing CSV: $e");
@@ -420,6 +568,143 @@ class _HomeScreenState extends State<HomeScreen> {
         SnackBar(content: Text('Error importing CSV: $e')),
       );
     }
+  }
+
+  Future<bool?> _confirmDeleteLocalTransactions(
+      BuildContext context, int count) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Delete Local Transactions"),
+        content: Text(
+            "There are $count transactions in your local data that are not in the CSV file. Do you want to delete them?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("No"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("Yes"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  bool validateCSV(List<List<dynamic>> csvData) {
+    if (csvData.isEmpty || csvData[0].length < 2) {
+      return false; // Invalid structure
+    }
+    for (int i = 1; i < csvData.length; i++) {
+      var row = csvData[i];
+      if (row[0] == null || double.tryParse(row[0].toString()) == null) {
+        return false; // Invalid amount
+      }
+      if (row[1] == null ||
+          !["credit", "debit"].contains(row[1].toString().toLowerCase())) {
+        return false; // Invalid type
+      }
+    }
+    return true;
+  }
+
+  Future<bool?> _showImportSummaryDialog(
+    BuildContext context, {
+    required List<Payment> newTransactions,
+    required List<Payment> updatedTransactions,
+    required List<Payment> localOnlyTransactions,
+  }) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Import Summary"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text("New Transactions: ${newTransactions.length}"),
+            Text("Updated Transactions: ${updatedTransactions.length}"),
+            Text("Local-Only Transactions: ${localOnlyTransactions.length}"),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("Cancel"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("Proceed"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<String?> _showImportFormatDialog(BuildContext context) async {
+    String? importFormat = "Amount, Type"; // Default format
+
+    return await showDialog<String>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text("Select Import Format"),
+          content: SingleChildScrollView(
+            child: StatefulBuilder(
+              builder: (BuildContext context, StateSetter setState) {
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    RadioListTile<String>(
+                      title: const Text("Amount, Type"),
+                      value: "Amount, Type",
+                      groupValue: importFormat,
+                      onChanged: (String? value) {
+                        setState(() {
+                          importFormat = value; // Update the state
+                        });
+                      },
+                    ),
+                    RadioListTile<String>(
+                      title: const Text("Debit, Credit"),
+                      value: "Debit, Credit",
+                      groupValue: importFormat,
+                      onChanged: (String? value) {
+                        setState(() {
+                          importFormat = value; // Update the state
+                        });
+                      },
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(null); // Cancel the dialog
+              },
+              child: const Text("Cancel"),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (importFormat != null) {
+                  Navigator.of(context).pop(importFormat); // Confirm selection
+                } else {
+                  // Optionally show a message if no format is selected
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                        content: Text('Please select an import format.')),
+                  );
+                }
+              },
+              child: const Text("Confirm"),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -435,7 +720,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: ListView(
           padding: EdgeInsets.zero,
           children: <Widget>[
-            DrawerHeader(
+            const DrawerHeader(
               decoration: BoxDecoration(
                 color: Colors.blue,
               ),
@@ -449,14 +734,20 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             // Move the LocaleSelectorPopupMenu inside the Drawer
             ListTile(
-              title: Text('Import CSV File'),
+              title: const Text('Import CSV File'),
               trailing: IconButton(
-                icon: const Icon(Icons.help_outline),
-                onPressed: () {
-                  importPaymentsFromCSV(context);
+                icon: const Icon(Icons.upload_file), // Updated icon for clarity
+                onPressed: () async {
+                  // Call the import function and handle any further actions here
+                  await importPaymentsFromCSV(context);
                 },
               ),
+              subtitle: const Text(
+                'Select a CSV file in the supported format (Amount, Type or Debit, Credit).',
+                style: TextStyle(fontSize: 12.0, color: Colors.grey),
+              ),
             ),
+
             // Add other items if needed
           ],
         ),
@@ -686,7 +977,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(width: 10.0),
           FloatingActionButton(
             heroTag: "Share",
-            onPressed: () => exportToCSV(context),
+            onPressed: () => _showExportOptions(context),
             backgroundColor: ThemeColors.error,
             child: const Icon(Icons.share),
           ),
@@ -709,7 +1000,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-
   void toggleAllTags() {
     setState(() {
       allSelected = !allSelected;
@@ -730,69 +1020,70 @@ class _HomeScreenState extends State<HomeScreen> {
     return tags.isEmpty
         ? const SizedBox()
         : Column(
-          children: [
-            SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
             children: [
-              Container(
-                margin: const EdgeInsets.symmetric(horizontal: 5),
-                padding: const EdgeInsets.all(7),
-                decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.black45)
-                ),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
                 child: Row(
                   children: [
-                    InkWell(
-                      child: Icon(allSelected
-                          ? Icons.check_box
-                          : Icons.check_box_outline_blank),
-                      onTap: () {
-                        toggleAllTags();
-                      },
+                    Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 5),
+                      padding: const EdgeInsets.all(7),
+                      decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.black45)),
+                      child: Row(
+                        children: [
+                          InkWell(
+                            child: Icon(allSelected
+                                ? Icons.check_box
+                                : Icons.check_box_outline_blank),
+                            onTap: () {
+                              toggleAllTags();
+                            },
+                          ),
+                          const Text(
+                            'Select All',
+                            style: TextStyle(fontSize: 16),
+                          ),
+                        ],
+                      ),
                     ),
-                    const Text(
-                      'Select All',
-                      style: TextStyle(fontSize: 16),
+                    Row(
+                      children: List.generate(tags.length, (index) {
+                        final tag = tags[index];
+                        return Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 5),
+                          padding: const EdgeInsets.all(7),
+                          decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: Colors.black45)),
+                          child: Row(
+                            children: [
+                              InkWell(
+                                child: Icon(selectedTags[index]
+                                    ? Icons.check_box
+                                    : Icons.check_box_outline_blank),
+                                onTap: () {
+                                  toggleTagSelection(
+                                      index, !selectedTags[index] ?? false);
+                                },
+                              ),
+                              Text(
+                                tag.name,
+                                style: const TextStyle(fontSize: 16),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
                     ),
                   ],
                 ),
               ),
-              Row(
-                children: List.generate(tags.length, (index) {
-                  final tag = tags[index];
-                  return Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 5),
-                    padding: const EdgeInsets.all(7),
-                    decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.black45)
-                    ),
-                    child: Row(
-                      children: [
-                        InkWell(
-                          child: Icon(selectedTags[index]
-                              ? Icons.check_box
-                              : Icons.check_box_outline_blank),
-                          onTap: () {
-                            toggleTagSelection(index, !selectedTags[index] ?? false);
-                          },
-                        ),
-                        Text(
-                          tag.name,
-                          style: const TextStyle(fontSize: 16),
-                        ),
-                      ],
-                    ),
-                  );
-                }),
+              const SizedBox(
+                height: 10,
               ),
             ],
-                  ),
-                ),
-            const SizedBox(height: 10,),
-          ],
-        );
+          );
   }
 }
