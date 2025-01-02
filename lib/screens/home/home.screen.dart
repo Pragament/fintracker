@@ -8,7 +8,6 @@ import 'package:fintracker/dao/payment_dao.dart';
 import 'package:fintracker/events.dart';
 import 'package:fintracker/model/account.model.dart';
 import 'package:fintracker/model/category.model.dart';
-import 'package:fintracker/model/default_account.model.dart';
 import 'package:fintracker/model/payment.model.dart';
 import 'package:fintracker/screens/home/widgets/date_picker.dart';
 import 'package:fintracker/screens/home/widgets/line_chart.dart';
