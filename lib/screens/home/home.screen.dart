@@ -8,7 +8,6 @@ import 'package:fintracker/dao/payment_dao.dart';
 import 'package:fintracker/events.dart';
 import 'package:fintracker/model/account.model.dart';
 import 'package:fintracker/model/category.model.dart';
-import 'package:fintracker/model/default_account.model.dart';
 import 'package:fintracker/model/payment.model.dart';
 import 'package:fintracker/screens/home/widgets/date_picker.dart';
 import 'package:fintracker/screens/home/widgets/line_chart.dart';
@@ -469,6 +468,7 @@ class _HomeScreenState extends State<HomeScreen> {
       String? selectedFormat = await _showImportFormatDialog(context);
       if (selectedFormat == null) return;
 
+      // Pick CSV file
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['csv'],
@@ -480,41 +480,100 @@ class _HomeScreenState extends State<HomeScreen> {
         List<List<dynamic>> csvData = const CsvToListConverter().convert(input);
 
         List<Payment> parsedPayments = [];
+        // Validate CSV Data
+        if (!validateCSV(csvData)) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('Invalid CSV format. Please check the file.')),
+          );
+          return; // Exit early if validation fails
+        }
+
+        // Calculate next ID based on existing payments
+        int nextId = _payments.isEmpty
+            ? 1
+            : _payments.map((p) => p.id!).reduce((a, b) => a > b ? a : b) + 1;
+
         for (int i = 1; i < csvData.length; i++) {
           var row = csvData[i];
           Payment? payment;
+          double amount = double.tryParse(row[5]?.toString() ?? '0.0') ?? 0.0;
           if (selectedFormat == "Amount, Type") {
+            // Format 1: Amount, Type
             payment = Payment(
-              id: null,
-              account: defaultAccount(),
-              category: defaultCategory(),
-              amount: double.parse(row[0]?.toString() ?? '0.0'),
-              type: row[1].toString().toLowerCase() == "credit"
+              id: int.tryParse(row[0]?.toString() ?? ''),
+              account: Account(
+                id: null, // Assuming account ID isn't available in CSV
+                name: row[1]?.toString() ?? '',
+                holderName: row[2]?.toString() ?? '',
+                accountNumber: row[3]?.toString() ?? '',
+                icon: Icons.account_balance, // Default icon
+                color: Colors.blue, // Default color, adjust as necessary
+                isDefault: false,
+                income: 0.0,
+                expense: 0.0,
+                balance: 0.0,
+              ),
+              category: Category(
+                  id: null, // Assuming category ID isn't available in CSV
+                  name: row[4]?.toString() ?? '',
+                  icon: Icons.category, // Default icon
+                  color: amount > 0
+                      ? Colors.green
+                      : Colors.red // Default color, adjust as necessary
+                  ),
+              amount: amount,
+              type: row[6]?.toString().toLowerCase() == "credit"
                   ? PaymentType.credit
                   : PaymentType.debit,
-              datetime: DateTime.now(),
-              title: "Imported Payment",
-              description: "",
-              autoCategorizationEnabled: false,
+              datetime: DateTime.tryParse(
+                      row[7]?.toString() ?? DateTime.now().toString()) ??
+                  DateTime.now(),
+              title: row[8]?.toString() ?? "Imported Payment",
+              description: row[9]?.toString() ?? "",
+              autoCategorizationEnabled:
+                  row[10]?.toString().toLowerCase() == "true",
             );
           } else if (selectedFormat == "Debit, Credit") {
-            double debit = double.tryParse(row[0]?.toString() ?? '0.0') ?? 0.0;
-            double credit = double.tryParse(row[1]?.toString() ?? '0.0') ?? 0.0;
+            // Format 2: Debit, Credit
+            double debit = double.tryParse(row[5]?.toString() ?? '0.0') ?? 0.0;
+            double credit = double.tryParse(row[6]?.toString() ?? '0.0') ?? 0.0;
             payment = Payment(
-              id: null,
-              account: defaultAccount(),
-              category: defaultCategory(),
+              id: int.tryParse(row[0]?.toString() ?? ''),
+              account: Account(
+                id: null, // Assuming account ID isn't available in CSV
+                name: row[1]?.toString() ?? '',
+                holderName: row[2]?.toString() ?? '',
+                accountNumber: row[3]?.toString() ?? '',
+                icon: Icons.account_balance, // Default icon
+                color: Colors.blue, // Default color, adjust as necessary
+                isDefault: false,
+                income: 0.0,
+                expense: 0.0,
+                balance: 0.0,
+              ),
+              category: Category(
+                id: null, // Assuming category ID isn't available in CSV
+                name: row[4]?.toString() ?? '',
+                icon: Icons.category, // Default icon
+                color: credit > 0.0 ? Colors.green : Colors.red,
+              ),
               amount: debit > 0 ? debit : credit,
               type: debit > 0 ? PaymentType.debit : PaymentType.credit,
-              datetime: DateTime.now(),
-              title: "Imported Payment",
-              description: "",
-              autoCategorizationEnabled: false,
+              datetime: DateTime.tryParse(
+                      row[7]?.toString() ?? DateTime.now().toString()) ??
+                  DateTime.now(),
+              title: row[8]?.toString() ?? "Imported Payment",
+              description: row[9]?.toString() ?? "",
+              autoCategorizationEnabled:
+                  row[10]?.toString().toLowerCase() == "true",
             );
           }
+
           if (payment != null) parsedPayments.add(payment);
         }
 
+        // Handle new, updated, and local-only transactions
         List<Payment> newTransactions = [];
         List<Payment> updatedTransactions = [];
         List<Payment> localOnlyTransactions = List.from(_payments);
@@ -530,6 +589,7 @@ class _HomeScreenState extends State<HomeScreen> {
           }
         }
 
+        // Show import summary
         bool? proceed = await _showImportSummaryDialog(
           context,
           newTransactions: newTransactions,
@@ -537,13 +597,14 @@ class _HomeScreenState extends State<HomeScreen> {
           localOnlyTransactions: localOnlyTransactions,
         );
 
-        if (proceed == true) {
+        if (proceed == true && localOnlyTransactions.length > 0) {
           bool? deleteLocal = await _confirmDeleteLocalTransactions(
             context,
             localOnlyTransactions.length,
           );
 
           setState(() {
+            // Add new payments and update existing ones
             _payments.addAll(newTransactions);
             for (var updated in updatedTransactions) {
               _payments.removeWhere(
@@ -551,12 +612,14 @@ class _HomeScreenState extends State<HomeScreen> {
               _payments.add(updated);
             }
 
+            // Optionally delete local-only transactions
             if (deleteLocal == true) {
               _payments.removeWhere(
                   (local) => localOnlyTransactions.contains(local));
             }
           });
 
+          // Notify user of success
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Payments imported successfully!')),
           );
@@ -596,16 +659,46 @@ class _HomeScreenState extends State<HomeScreen> {
     if (csvData.isEmpty || csvData[0].length < 2) {
       return false; // Invalid structure
     }
+
+    // Check for both formats
+    bool hasDebitCreditFormat =
+        csvData[0].contains('Debit') && csvData[0].contains('Credit');
+
     for (int i = 1; i < csvData.length; i++) {
       var row = csvData[i];
-      if (row[0] == null || double.tryParse(row[0].toString()) == null) {
-        return false; // Invalid amount
+
+      // Check for 'Amount' and 'Type' format
+      if (!hasDebitCreditFormat) {
+        // Validate amount
+        if (row[5] == null || double.tryParse(row[5].toString()) == null) {
+          return false; // Invalid amount
+        }
+        // Validate type (credit or debit)
+        if (row[6] == null ||
+            !["credit", "debit"].contains(row[6].toString().toLowerCase())) {
+          return false; // Invalid type
+        }
+      } else {
+        // Validate Debit and Credit
+        if (row[5] == null || double.tryParse(row[5].toString()) == null) {
+          return false; // Invalid Debit amount
+        }
+        if (row[6] == null || double.tryParse(row[6].toString()) == null) {
+          return false; // Invalid Credit amount
+        }
       }
-      if (row[1] == null ||
-          !["credit", "debit"].contains(row[1].toString().toLowerCase())) {
-        return false; // Invalid type
+
+      // Validate Account Number (if present)
+      if (row[3] == null || row[3].toString().isEmpty) {
+        return false; // Invalid Account Number
+      }
+
+      // Validate Date
+      if (row[7] == null || DateTime.tryParse(row[7].toString()) == null) {
+        return false; // Invalid Date
       }
     }
+
     return true;
   }
 
