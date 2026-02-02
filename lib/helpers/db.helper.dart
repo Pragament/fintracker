@@ -4,6 +4,7 @@ import "package:flutter/material.dart";
 import "package:path/path.dart";
 import "package:fintracker/helpers/migrations/migrations.dart";
 import "package:sqflite_common_ffi/sqflite_ffi.dart";
+import "package:fintracker/helpers/data_sanitizer.dart";
 
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -150,7 +151,7 @@ Future<String> getExternalDocumentPath() async {
 //   return file.path;
 // }
 
-Future<dynamic> export({required String format}) async {
+Future<dynamic> export({required String format, bool sanitize = false}) async {
   // Query data from the database
   List<dynamic> accounts = await database!.query("accounts");
   List<dynamic> categories = await database!.query("categories");
@@ -189,9 +190,15 @@ Future<dynamic> export({required String format}) async {
   // Add formatted payments to the data map
   data["payments"] = formattedPayments;
 
+  // Apply sanitization if requested
+  if (sanitize) {
+    data = DataSanitizer.sanitizeExportData(data);
+  }
+
   // Get the external document path and create a file
   final path = await getExternalDocumentPath();
-  String name = "fintracker-backup-${DateTime.now().millisecondsSinceEpoch}.json";
+  String sanitizePrefix = sanitize ? "sanitized-" : "";
+  String name = "fintracker-${sanitizePrefix}backup-${DateTime.now().millisecondsSinceEpoch}.json";
   File file = File('$path/$name');
 
   // Write the data to the file

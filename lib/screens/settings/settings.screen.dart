@@ -157,39 +157,92 @@ class _SettingsScreenState extends State<SettingsScreen> {
               key: const Key('settings_export_option'),
               dense: true,
               onTap: () async {
-                // Show format selection dialog before export
-                String selectedFormat = await showDialog<String>(
-                      context: context,
-                      builder: (context) {
+                // Show export options dialog
+                Map<String, dynamic>? exportOptions = await showDialog<Map<String, dynamic>>(
+                  context: context,
+                  builder: (context) {
+                    String selectedFormat = "Amount, Type";
+                    bool sanitizeExport = false;
+                    
+                    return StatefulBuilder(
+                      builder: (context, setState) {
                         return AlertDialog(
-                          title: const Text('Choose Export Format'),
+                          title: const Text('Export Options'),
                           content: Column(
                             mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              ListTile(
+                              const Text('Choose Export Format:'),
+                              RadioListTile<String>(
                                 title: const Text("Amount, Type"),
-                                onTap: () {
-                                  Navigator.of(context).pop("Amount, Type");
+                                value: "Amount, Type",
+                                groupValue: selectedFormat,
+                                onChanged: (value) {
+                                  setState(() {
+                                    selectedFormat = value!;
+                                  });
                                 },
                               ),
-                              ListTile(
+                              RadioListTile<String>(
                                 title: const Text("Debit, Credit"),
-                                onTap: () {
-                                  Navigator.of(context).pop("Debit, Credit");
+                                value: "Debit, Credit",
+                                groupValue: selectedFormat,
+                                onChanged: (value) {
+                                  setState(() {
+                                    selectedFormat = value!;
+                                  });
+                                },
+                              ),
+                              const SizedBox(height: 16),
+                              const Text('Privacy Options:'),
+                              CheckboxListTile(
+                                key: const Key('sanitize_export_checkbox'),
+                                title: const Text('Sanitize Export'),
+                                subtitle: const Text('Remove personal information (names, account numbers, etc.)'),
+                                value: sanitizeExport,
+                                onChanged: (value) {
+                                  setState(() {
+                                    sanitizeExport = value ?? false;
+                                  });
                                 },
                               ),
                             ],
                           ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.of(context).pop(),
+                              child: const Text('Cancel'),
+                            ),
+                            ElevatedButton(
+                              onPressed: () {
+                                Navigator.of(context).pop({
+                                  'format': selectedFormat,
+                                  'sanitize': sanitizeExport,
+                                });
+                              },
+                              child: const Text('Export'),
+                            ),
+                          ],
                         );
                       },
-                    ) ??
-                    "Amount, Type"; // Default format if none selected
+                    );
+                  },
+                );
+
+                if (exportOptions == null) return;
+
+                String selectedFormat = exportOptions['format'];
+                bool sanitizeExport = exportOptions['sanitize'];
 
                 // Proceed with the export confirmation
                 ConfirmModal.showConfirmDialog(
                   context,
                   title: "Are you sure?",
-                  content: const Text("Want to export all the data to a file?"),
+                  content: Text(
+                    sanitizeExport 
+                      ? "Want to export all data to a file? Personal information will be removed for privacy."
+                      : "Want to export all the data to a file?"
+                  ),
                   onConfirm: () async {
                     Navigator.of(context).pop();
 
@@ -200,8 +253,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     );
 
                     try {
-                      // Call the export function with selected format
-                      String exportPath = await export(format: selectedFormat);
+                      // Call the export function with selected options
+                      String exportPath = await export(
+                        format: selectedFormat, 
+                        sanitize: sanitizeExport
+                      );
 
                       // Show success message with export path
                       ScaffoldMessenger.of(context).showSnackBar(
